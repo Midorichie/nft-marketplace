@@ -1,0 +1,8 @@
+[project]
+name = "bitcoin-backed-nft-marketplace"
+description = "NFT Marketplace with Bitcoin-backed Assets on Stacks"
+version = "0.1.0"
+
+[dependencies]
+[contracts]
+nft-marketplace = { path = "contracts/nft-marketplace.clar" }
