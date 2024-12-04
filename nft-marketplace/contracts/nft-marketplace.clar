@@ -1,86 +1,60 @@
-;; Advanced NFT Marketplace Contract
+;; Advanced Bitcoin-Backed NFT Marketplace
+
 (define-constant CONTRACT-OWNER tx-sender)
 (define-constant ERR-NOT-AUTHORIZED (err u100))
 (define-constant ERR-INSUFFICIENT-FUNDS (err u101))
-(define-constant ERR-INVALID-ESCROW (err u102))
+(define-constant ERR-COMPLIANCE-FAIL (err u102))
 
-;; Enhanced NFT with Escrow Mechanism
+;; Enhanced NFT with Advanced Governance
 (define-non-fungible-token bitcoin-backed-nft (string-ascii 256))
 
-;; Escrow Account Structure
-(define-map escrow-accounts 
-  { 
-    token-id: (string-ascii 256), 
-    escrow-owner: principal 
-  }
-  {
-    locked-amount: uint,
-    release-conditions: (list 10 (string-ascii 50)),
-    expiration-block: uint
-  }
-)
-
-;; Advanced NFT Metadata with Extended Properties
-(define-map nft-metadata 
+;; Comprehensive Governance Mapping
+(define-map nft-governance-registry
   { token-id: (string-ascii 256) }
   {
     owner: principal,
-    bitcoin-tx-ref: (string-ascii 256),
-    fractional-shares: uint,
-    royalty-rate: uint,
-    appraisal-value: uint,
-    compliance-status: bool
+    authorized-operators: (list 10 principal),
+    transfer-restrictions: (list 5 (string-ascii 50)),
+    governance-score: uint
   }
 )
 
-;; Secure NFT Minting with Compliance Check
-(define-public (mint-compliant-nft 
+;; Comprehensive Compliance and Risk Assessment
+(define-map nft-risk-profile
+  { token-id: (string-ascii 256) }
+  {
+    risk-score: uint,
+    compliance-status: bool,
+    regulatory-tags: (list 5 (string-ascii 50)),
+    audit-history: (list 10 (string-ascii 256))
+  }
+)
+
+;; Multi-Signature Governance Mint
+(define-public (governance-nft-mint
   (token-id (string-ascii 256))
   (bitcoin-tx-ref (string-ascii 256))
-  (fractional-shares uint)
-  (royalty-rate uint)
-  (appraisal-value uint)
+  (governance-params (list 3 principal))
 )
   (begin
-    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (> (len governance-params) u1) ERR-NOT-AUTHORIZED)
     (try! (nft-mint? bitcoin-backed-nft token-id tx-sender))
-    (map-set nft-metadata 
+    (map-set nft-governance-registry
       { token-id: token-id }
       {
         owner: tx-sender,
-        bitcoin-tx-ref: bitcoin-tx-ref,
-        fractional-shares: fractional-shares,
-        royalty-rate: royalty-rate,
-        appraisal-value: appraisal-value,
-        compliance-status: false  ;; Requires manual compliance verification
+        authorized-operators: governance-params,
+        transfer-restrictions: (list "KYC-REQUIRED" "AML-CHECK"),
+        governance-score: u100
       }
     )
-    (ok true)
-  )
-)
-
-;; Escrow Creation with Advanced Conditions
-(define-public (create-escrow 
-  (token-id (string-ascii 256))
-  (locked-amount uint)
-  (release-conditions (list 10 (string-ascii 50)))
-  (expiration-blocks uint)
-)
-  (let 
-    (
-      (metadata (unwrap! (map-get? nft-metadata { token-id: token-id }) ERR-INVALID-ESCROW))
-      (current-owner (get owner metadata))
-    )
-    (asserts! (is-eq tx-sender current-owner) ERR-NOT-AUTHORIZED)
-    (map-set escrow-accounts 
-      { 
-        token-id: token-id, 
-        escrow-owner: tx-sender 
-      }
+    (map-set nft-risk-profile
+      { token-id: token-id }
       {
-        locked-amount: locked-amount,
-        release-conditions: release-conditions,
-        expiration-block: (+ block-height expiration-blocks)
+        risk-score: u50,
+        compliance-status: false,
+        regulatory-tags: (list "BITCOIN-BACKED" "HIGH-VALUE"),
+        audit-history: (list bitcoin-tx-ref)
       }
     )
     (ok true)
@@ -94,35 +68,45 @@
 )
   (let 
     (
-      (current-metadata (unwrap! (map-get? nft-metadata { token-id: token-id }) ERR-INVALID-ESCROW))
+      (risk-profile (unwrap! (map-get? nft-risk-profile { token-id: token-id }) ERR-COMPLIANCE-FAIL))
     )
     (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
-    (map-set nft-metadata 
+    (map-set nft-risk-profile 
       { token-id: token-id }
-      (merge current-metadata { compliance-status: is-compliant })
+      (merge risk-profile { compliance-status: is-compliant })
     )
     (ok true)
   )
 )
 
-;; Enhanced Transfer with Royalty and Compliance Check
-(define-public (transfer-compliant-nft 
+;; Comprehensive Transfer with Multi-Layer Validation
+(define-public (governance-transfer
   (token-id (string-ascii 256))
   (new-owner principal)
 )
   (let 
     (
-      (current-metadata (unwrap! (map-get? nft-metadata { token-id: token-id }) ERR-NOT-AUTHORIZED))
-      (current-owner (get owner current-metadata))
-      (compliance-status (get compliance-status current-metadata))
+      (governance-data (unwrap! (map-get? nft-governance-registry { token-id: token-id }) ERR-NOT-AUTHORIZED))
+      (risk-profile (unwrap! (map-get? nft-risk-profile { token-id: token-id }) ERR-COMPLIANCE-FAIL))
+      (current-owner (get owner governance-data))
+      (authorized-operators (get authorized-operators governance-data))
     )
-    (asserts! compliance-status ERR-NOT-AUTHORIZED)
     (asserts! (is-eq tx-sender current-owner) ERR-NOT-AUTHORIZED)
+    (asserts! (get compliance-status risk-profile) ERR-COMPLIANCE-FAIL)
     (try! (nft-transfer? bitcoin-backed-nft token-id current-owner new-owner))
-    (map-set nft-metadata 
+    (map-set nft-governance-registry
       { token-id: token-id }
-      (merge current-metadata { owner: new-owner })
+      (merge governance-data { owner: new-owner })
     )
     (ok true)
   )
+)
+
+;; Read-only Functions for Governance Inspection
+(define-read-only (get-nft-governance-info (token-id (string-ascii 256)))
+  (map-get? nft-governance-registry { token-id: token-id })
+)
+
+(define-read-only (get-nft-risk-profile (token-id (string-ascii 256)))
+  (map-get? nft-risk-profile { token-id: token-id })
 )
